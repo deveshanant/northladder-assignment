@@ -19,4 +19,5 @@ kubectl apply -f northladder-deploy-svc.yaml
 // helm create northladder
 // made changes in values file as required
 
-
+// run command to check generated templates :
+// helm template northladder
