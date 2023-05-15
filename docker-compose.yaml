@@ -1,0 +1,27 @@
+version: '3'
+
+services:
+
+  mongo_database:
+    image: mongo:4.2
+    container_name: server_mongo_database
+    restart: always
+    ports:
+      - "27017:27017"
+
+  redis_cache:
+    image: redis:latest
+    container_name: redis_cache
+    restart: always
+    expose:
+      - "6379"
+    ports:
+      - "6379:6379"
+
+  node-server:
+    container_name: node_server
+    build:
+      context: ./
+    restart: always
+    ports:
+      - 3000:3000
