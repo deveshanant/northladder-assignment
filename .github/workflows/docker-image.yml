@@ -32,7 +32,7 @@ jobs:
         run: |
           npm run build
           npm run test
-          
+
   setup-build-publish-deploy:
     name: northladder server build Deploy
     runs-on: self-hosted
@@ -61,7 +61,7 @@ jobs:
     - name: Build, tag, and push image to Amazon ECR
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        ECR_REPOSITORY: northladde-api-prod
+        ECR_REPOSITORY: northladder-api-prod
         IMAGE_TAG: ${{ steps.commit.outputs.short }}
       run: |
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA  .
