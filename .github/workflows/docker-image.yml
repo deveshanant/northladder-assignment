@@ -1,48 +1,77 @@
-name: CI job
+name: northladder api server build Deploy
 
-on: push
+on:
+  push:
+    branches: ["main"]
+env:
+  AWS_CLUSTER: main-cluster
+  AWS_ZONE: eu-west-1
+
 jobs:
-    build_and_test:
-      runs-on: ubuntu-latest
-      strategy:
-        matrix:
-          node-version: [14,15,16]
-        
-      steps:
-        - uses: actions/checkout@v2
+  build_and_test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [14,15,16]
+      
+    steps:
+      - uses: actions/checkout@v2
 
-        - name: setup node
-          uses: actions/setup-node@master
-          with:
-            node-version: ${{ matrix.node-version }}
+      - name: setup node
+        uses: actions/setup-node@master
+        with:
+          node-version: ${{ matrix.node-version }}
 
-        - name: Install dependencies
-        #this requires a package.json which is currently not there in the project 
-          run: |
-            npm install
-            npm ci 
-        # build and test scripts are also not written   
-        - name: build
-          run: |
-            npm run build
-            npm run test
-    push_to_docker_hub:
-    
-      name: Push to Docker Hub
-      runs-on: ubuntu-latest
-      steps:
-        - name: Check out the repo
-          uses: actions/checkout@v3
+      - name: Install dependencies
+      #this requires a package.json which is currently not there in the project 
+        run: |
+          npm install
+          npm ci 
+      # build and test scripts are also not written   
+      - name: build
+        run: |
+          npm run build
+          npm run test
+          
+  setup-build-publish-deploy:
+    name: northladder server build Deploy
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: .
 
-        - name: Login to Docker Hub
-          uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
-          with:
-            username: ${{ secrets.DOCKERHUB_USERNAME }}
-            password: ${{ secrets.DOCKERHUB_PASSWORD }}
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
 
-        - name: Build and push Docker image
-          uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
-          with:
-            context: .
-            push: true
-            tags: northladder/northladder-assignment-node-server
+    - id: Commit
+      uses: pr-mpt/actions-commit-hash@v1
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-west-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: northladde-api-prod
+        IMAGE_TAG: ${{ steps.commit.outputs.short }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA  .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA 
+
+
+    - name: update aws kubeconfig and deploy helm
+      run: |-
+        sudo aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+        sudo aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        sudo aws eks update-kubeconfig --name "${AWS_CLUSTER}" --region "${AWS_ZONE}"
+        sed -i "s~tag: latest~tag: $GITHUB_SHA~g" northladder/values.yaml
+        sudo helm upgrade --install northladder-api-deploy northladder/  --values northladder/values.yaml -n node-api
